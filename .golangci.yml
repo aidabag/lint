@@ -1,0 +1,11 @@
+linters-settings:
+  custom:
+    loglinter:
+      path: github.com/aidabag/lint/pkg/loglinter
+      enabled: true
+      settings:
+        rules:
+          - lowercase_start
+          - english_only
+          - no_special_chars
+          - no_sensitive_data

@@ -1,0 +1,215 @@
+# Конфигурационный файл для Log Linter
+
+# Включенные правила
+rules:
+  lowercase_start: true
+  english_only: true
+  no_special_chars: true
+  no_sensitive_data: true
+
+# Настройки правил
+settings:
+  # Исключения для правила строчной буквы
+  lowercase_start:
+    # Слова, которые могут начинаться с заглавной буквы
+    allowed_words:
+      - API
+      - URL
+      - HTTP
+      - HTTPS
+      - JSON
+      - XML
+      - SQL
+      - DB
+      - ID
+      - UUID
+      - JWT
+      - OAuth
+      - REST
+      - GraphQL
+      - TCP
+      - UDP
+      - IP
+      - DNS
+      - TLS
+      - SSL
+    # Максимальная длина сообщения для исключения
+    max_length_exception: 30
+
+  # Настройки проверки английского языка
+  english_only:
+    # Разрешенные символы вне ASCII
+    allowed_unicode:
+      - "©"   # копирайт
+      - "®"   # зарегистрированная марка
+      - "™"   # товарный знак
+
+  # Настройки спецсимволов
+  no_special_chars:
+    # Разрешенные спецсимволы
+    allowed_chars:
+      - "."   # точка
+      - ","   # запятая
+      - ":"   # двоеточие
+      - "-"   # дефис
+      # Скобки разрешены только в контексте форматирования
+    # Запретить эмодзи
+    block_emoji: true
+    # Запретить множественную пунктуацию
+    block_repeated_punctuation: true
+
+  # Настройки чувствительных данных
+  no_sensitive_data:
+    # Базовые паттерны (используются если кастомные паттерны не определены)
+    sensitive_patterns:
+      - "password"
+      - "passwd"
+      - "pwd"
+      - "api_key"
+      - "apikey"
+      - "api-key"
+      - "token"
+      - "secret"
+      - "key"
+      - "credential"
+      - "authorization"
+      - "bearer"
+      - "session"
+      - "cookie"
+      - "private_key"
+      - "private-key"
+      - "access_token"
+      - "refresh_token"
+      - "client_secret"
+      - "client-secret"
+    
+    # Безопасные контексты (не считать нарушением)
+    safe_contexts:
+      - "token validated"
+      - "token received"
+      - "token processed"
+      - "token expired"
+      - "key updated"
+      - "key found"
+      - "key generated"
+      - "api request"
+      - "api response"
+      - "api call"
+      - "session started"
+      - "session ended"
+      - "session created"
+      - "session destroyed"
+
+# Кастомные паттерны для проверки чувствительных данных
+custom_patterns:
+  # Базовые паттерны включены по умолчанию
+  enabled: true
+  
+  # Дополнительные паттерны
+  patterns:
+    - name: "company_secret"
+      description: "Секреты компании"
+      type: "simple"
+      words: ["company_secret", "internal_key", "corporate_token"]
+      severity: "critical"
+      enabled: true
+      tags: ["corporate", "secret"]
+    
+    - name: "personal_data"
+      description: "Персональные данные"
+      type: "simple"
+      words: ["ssn", "social_security", "passport", "driver_license"]
+      severity: "critical"
+      enabled: true
+      tags: ["pii", "personal"]
+    
+    - name: "database_connection"
+      description: "Данные для подключения к базе данных"
+      type: "regex"
+      regex: "(mysql|postgresql|mongodb)://[^\\s]+"
+      severity: "high"
+      enabled: true
+      tags: ["database", "connection"]
+    
+    - name: "aws_credentials"
+      description: "AWS учетные данные"
+      type: "regex"
+      regex: "AKIA[0-9A-Z]{16}"
+      severity: "critical"
+      enabled: true
+      tags: ["cloud", "aws"]
+    
+    - name: "credit_card"
+      description: "Номера кредитных карт"
+      type: "custom"
+      severity: "critical"
+      enabled: true
+      tags: ["financial", "pii"]
+    
+    - name: "email"
+      description: "Email адреса"
+      type: "custom"
+      severity: "medium"
+      enabled: true
+      tags: ["pii", "contact"]
+    
+    - name: "phone"
+      description: "Номера телефонов"
+      type: "custom"
+      severity: "medium"
+      enabled: true
+      tags: ["pii", "contact"]
+    
+    - name: "base64_long"
+      description: "Длинные base64 последовательности (могут содержать секреты)"
+      type: "regex"
+      regex: "[A-Za-z0-9+/]{40,}={0,2}"
+      severity: "medium"
+      enabled: true
+      tags: ["encoding"]
+
+# Настройки логгеров
+loggers:
+  # Поддерживаемые логгеры
+  supported:
+    - "slog"
+    - "log"
+    - "logger"
+    - "zap"
+  
+  # Исключения (не проверять вызовы этих функций)
+  excluded_functions:
+    - "Print"
+    - "Printf"
+    - "Println"
+
+# Глобальные настройки
+global:
+  # Режим вывода
+  output_format: "text"  # text, json, yaml
+  
+  # Уровень детализации
+  verbosity: "normal"    # quiet, normal, verbose
+  
+  # Максимальное количество ошибок на файл
+  max_errors_per_file: 10
+  
+  # Исключаемые файлы и директории
+  exclude:
+    patterns:
+      - "*_test.go"
+      - "*.pb.go"
+      - "*.gen.go"
+      - "vendor/*"
+      - "mock/*"
+      - "testdata/*"
+
+# Настройки авто-исправления
+autofix:
+  enabled: true
+  # Какие правила исправлять автоматически
+  rules:
+    - "lowercase_start"
+    - "english_only"
+  # Создавать backup файлы
+  backup: true

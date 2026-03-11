@@ -1,0 +1,52 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+USAGE.md
+CHANGELOG.md
+docs/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Test files
+*_test.go
+testdata/
+coverage.out
+coverage.html
+benchmark.txt
+mem.prof
+
+# Build artifacts
+dist/
+build/
+*.exe
+loglinter*
+
+# Go cache
+.go-mod-cache/
+.go-build-cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Backup files
+*.backup
+
+# Temporary files
+tmp/
+temp/

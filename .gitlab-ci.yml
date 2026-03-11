@@ -1,0 +1,269 @@
+# GitLab CI/CD Configuration for Log Linter
+
+stages:
+  - test
+  - lint
+  - build
+  - security
+  - deploy
+
+variables:
+  GO_VERSION: "1.22"
+  GO_MOD_CACHE_DIR: "$CI_PROJECT_DIR/.go-mod-cache"
+  GO_BUILD_CACHE_DIR: "$CI_PROJECT_DIR/.go-build-cache"
+
+# Кэш для Go модулей и сборки
+cache:
+  key: "$CI_COMMIT_REF_SLUG"
+  paths:
+    - $GO_MOD_CACHE_DIR
+    - $GO_BUILD_CACHE_DIR
+
+# Шаблон для настройки Go
+.go-setup: &go-setup
+  image: golang:$GO_VERSION
+  before_script:
+    - mkdir -p $GO_MOD_CACHE_DIR $GO_BUILD_CACHE_DIR
+    - export GOPATH="$GO_BUILD_CACHE_DIR"
+    - export GOMODCACHE="$GO_MOD_CACHE_DIR"
+    - go mod download
+
+# Тестирование
+test:unit:
+  stage: test
+  <<: *go-setup
+  script:
+    - go test -v -race -coverprofile=coverage.out ./...
+    - go tool cover -html=coverage.out -o coverage.html
+  coverage: '/coverage: \d+\.\d+% of statements/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    paths:
+      - coverage.html
+      - coverage.out
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_MERGE_REQUEST_ID
+
+test:race:
+  stage: test
+  <<: *go-setup
+  script:
+    - go test -race -short ./...
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_MERGE_REQUEST_ID
+
+test:memory:
+  stage: test
+  <<: *go-setup
+  script:
+    - go test -memprofile=mem.prof -bench=. ./...
+    - go tool pprof -text mem.prof
+  artifacts:
+    paths:
+      - mem.prof
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH
+
+# Бенчмарки
+test:benchmark:
+  stage: test
+  <<: *go-setup
+  script:
+    - go test -bench=. -benchmem -count=3 ./... | tee benchmark.txt
+  artifacts:
+    paths:
+      - benchmark.txt
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH
+
+# Линтинг
+lint:golangci:
+  stage: lint
+  <<: *go-setup
+  script:
+    - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+    - golangci-lint run --timeout=5m
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_MERGE_REQUEST_ID
+
+lint:our-linter:
+  stage: lint
+  <<: *go-setup
+  script:
+    - echo "Testing our linter on test data..."
+    - go run cmd/simple/main.go -v ./testdata/...
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_MERGE_REQUEST_ID
+
+# Форматирование кода
+lint:format:
+  stage: lint
+  <<: *go-setup
+  script:
+    - go fmt ./...
+    - git diff --exit-code
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_MERGE_REQUEST_ID
+
+# Проверка зависимостей
+lint:vulnerability:
+  stage: lint
+  <<: *go-setup
+  script:
+    - go install golang.org/x/vuln/cmd/govulncheck@latest
+    - govulncheck ./...
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_MERGE_REQUEST_ID
+
+# Сборка
+build:linux:
+  stage: build
+  <<: *go-setup
+  script:
+    - mkdir -p dist
+    - GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/loglinter-linux-amd64 cmd/simple/main.go
+    - GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/loglinter-linux-arm64 cmd/simple/main.go
+  artifacts:
+    paths:
+      - dist/loglinter-linux-*
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+build:darwin:
+  stage: build
+  <<: *go-setup
+  script:
+    - mkdir -p dist
+    - GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/loglinter-darwin-amd64 cmd/simple/main.go
+    - GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/loglinter-darwin-arm64 cmd/simple/main.go
+  artifacts:
+    paths:
+      - dist/loglinter-darwin-*
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+build:windows:
+  stage: build
+  <<: *go-setup
+  script:
+    - mkdir -p dist
+    - GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/loglinter-windows-amd64.exe cmd/simple/main.go
+  artifacts:
+    paths:
+      - dist/loglinter-windows-*
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+# Сборка Docker образа
+build:docker:
+  stage: build
+  image: docker:20.10.16
+  services:
+    - docker:20.10.16-dind
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+
+# Сканирование безопасности
+security:gosec:
+  stage: security
+  <<: *go-setup
+  script:
+    - go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+    - gosec -fmt sarif -out gosec.sarif ./...
+  artifacts:
+    paths:
+      - gosec.sarif
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_MERGE_REQUEST_ID
+
+security:sast:
+  stage: security
+  image: docker:stable
+  services:
+    - docker:stable-dind
+  script:
+    - docker run --rm -v "$PWD":/code -w /code securecodewarrior/sast-scan
+  artifacts:
+    reports:
+      sast: gl-sast-report.json
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_MERGE_REQUEST_ID
+
+# Развертывание (только для тегов)
+deploy:release:
+  stage: deploy
+  <<: *go-setup
+  script:
+    - echo "Creating release for tag $CI_COMMIT_TAG"
+    - mkdir -p release
+    - GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o release/loglinter-linux-amd64 cmd/simple/main.go
+    - GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o release/loglinter-linux-arm64 cmd/simple/main.go
+    - GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o release/loglinter-darwin-amd64 cmd/simple/main.go
+    - GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o release/loglinter-darwin-arm64 cmd/simple/main.go
+    - GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o release/loglinter-windows-amd64.exe cmd/simple/main.go
+    - cd release
+    - sha256sum * > checksums.txt
+  artifacts:
+    paths:
+      - release/
+    expire_in: never
+  release:
+    tag_name: $CI_COMMIT_TAG
+    description: "Release $CI_COMMIT_TAG"
+  rules:
+    - if: $CI_COMMIT_TAG
+
+# Публикация в GitLab Registry
+deploy:registry:
+  stage: deploy
+  image: docker:20.10.16
+  services:
+    - docker:20.10.16-dind
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $CI_REGISTRY_IMAGE:latest .
+    - docker push $CI_REGISTRY_IMAGE:latest
+    - if [ "$CI_COMMIT_TAG" ]; then
+        docker tag $CI_REGISTRY_IMAGE:latest $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG;
+        docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG;
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+
+# Очистка старых артефактов
+cleanup:
+  stage: .post
+  image: alpine:latest
+  script:
+    - echo "Cleaning up old artifacts..."
+  rules:
+    - if: $CI_COMMIT_BRANCH
+  when: always

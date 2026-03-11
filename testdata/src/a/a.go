@@ -1,0 +1,36 @@
+package a
+
+import (
+	"log/slog"
+	"go.uber.org/zap"
+)
+
+func TestLogs() {
+	// Примеры плохих логов
+	slog.Info("Starting server")           // Должно начинаться со строчной буквы
+	slog.Error("Ошибка подключения")       // Должно быть на английском
+	slog.Warn("Warning! Something wrong")  // Не должно содержать спецсимволы
+	slog.Info("Password: secret123")       // Не должно содержать чувствительные данные
+	slog.Debug("API key: abc123")          // Не должно содержать чувствительные данные
+	slog.Info("Server started! 🚀")        // Не должно содержать эмодзи
+	
+	// Примеры хороших логов
+	slog.Info("starting server")
+	slog.Error("failed to connect")
+	slog.Warn("something went wrong")
+	slog.Info("user authenticated successfully")
+	slog.Debug("api request completed")
+	slog.Info("token validated")
+}
+
+func TestZapLogs(logger *zap.Logger) {
+	// Примеры плохих логов для zap
+	logger.Info("Database connection failed") // Начинается с заглавной буквы
+	logger.Error("Ошибка базы данных")        // Не на английском
+	logger.Warn("Warning! Check config")      // Спецсимволы
+	
+	// Примеры хороших логов для zap
+	logger.Info("database connection established")
+	logger.Error("connection timeout occurred")
+	logger.Warn("configuration check required")
+}
